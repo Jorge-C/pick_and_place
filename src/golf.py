@@ -50,10 +50,13 @@ def limb_pose(limb_name):
 
 class Baxter(object):
     """Add higher level operations to Baxter."""
-    def __init__(self, limb_name):
+    def __init__(self, limb_name, gripper=None):
         self.limb_name = limb_name
         self.limb = baxter_interface.Limb(limb_name)
-        self.gripper = baxter_interface.Gripper(limb_name)
+        if gripper is None:
+            self.gripper = baxter_interface.Gripper(limb_name)
+        else:
+            self.gripper = gripper(limb_name)
 
         # Enable actuators (doesn't seem to work?) I need to rosrun
         # robot_enable.py -e
