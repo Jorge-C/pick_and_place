@@ -161,7 +161,13 @@ class Baxter(object):
         return kinematics.forward_position_kinematics(joint_angles)
 
     def move_relative(self, pose):
-        # Needs to be tested
+        """Move endpoint according to the relative pose given.
+
+        Examples
+        --------
+        baxter.move_relative([0, 0, 0, 0, 0, 0, 1])  # No movement
+        baxter.move_relative([x, y, z, 0, 0, 0, 1])  # End effector translation
+        """
         current_pose = self.limb.endpoint_pose()
         xyz = current_pose['position']
         qxqyqzqw = current_pose['orientation']
@@ -187,8 +193,6 @@ class Baxter(object):
         qxqyqzqw = tf.transformations.quaternion_multiply(pose1[3:],
                                                           pose2[3:]).tolist()
         return xyz + qxqyqzqw
-        
-        
 
 
 def main(limb_name, reset):
