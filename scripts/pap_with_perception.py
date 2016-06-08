@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 import rospy
-from pap import PickAndPlaceNode
+from pap.manager import PickAndPlaceNode
 
 
 if __name__ == '__main__':
