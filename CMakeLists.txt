@@ -115,7 +115,7 @@ catkin_package(
 # all install targets should use catkin DESTINATION variables
 # See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
 
-catkin_install_python(PROGRAMS bin/pap_with_perception.py
+catkin_install_python(PROGRAMS scripts/pap_with_perception.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 ## Mark executable scripts (Python etc.) for installation
