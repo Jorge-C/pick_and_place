@@ -7,7 +7,7 @@ import tf
 from std_msgs.msg import Int64
 from keyboard.msg import Key
 
-from .golf import Baxter, limb_pose
+from .robot import Baxter, limb_pose
 
 
 class PickAndPlaceNode(object):
