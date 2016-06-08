@@ -40,9 +40,9 @@ class PickAndPlaceNode(object):
                                              Key,
                                              self.handle_keyboard,
                                              queue_size=1)
-        self.n_objects_sub = rospy.Subcriber("/num_objects", Int64,
-                                             self.update_num_objects,
-                                             queue_size=1)
+        self.n_objects_sub = rospy.Subscriber("/num_objects", Int64,
+                                              self.update_num_objects,
+                                              queue_size=1)
         self.perception_pub = rospy.Publisher("/perception/enabled",
                                               Bool,
                                               queue_size=1)
@@ -83,7 +83,7 @@ class PickAndPlaceNode(object):
         self.baxter.place(pose_list)
         self.place_pose['position'].x += 0.04
 
-    def _pick(self, frame_name):
+    def _pick(self):
         # State not modified until picking succeeds
         try:
             obj_to_get = int(self.character)
@@ -93,7 +93,7 @@ class PickAndPlaceNode(object):
 
         frame_name = "object_pose_{}".format(obj_to_get)
 
-        rospy.loginfo("Picking object " + obj_to_get + "...")
+        rospy.loginfo("Picking object {}...".format(obj_to_get))
         if self.tf.frameExists("/base") and self.tf.frameExists(frame_name):
             t = self.tf.getLatestCommonTime("/base", frame_name)
             position, quaternion = self.tf.lookupTransform("/base",
