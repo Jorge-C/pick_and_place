@@ -9,7 +9,12 @@ from moveit_commander import conversions
 from baxter_core_msgs.srv import SolvePositionIK, SolvePositionIKRequest
 from baxter_core_msgs.msg import DigitalIOState
 
+from std_msgs.msg import Int64
+from keyboard.msg import Key
+
+# Apparently tf was deprecated a long time ago? And we should use tf2?
 import tf
+# import tf2_ros
 
 from baxter_pykdl import baxter_kinematics
 
@@ -32,7 +37,9 @@ class CuffOKButton(object):
 
 
 def limb_pose(limb_name):
-    """Get limb pose at time of OK cuff button press."""
+    """Get limb pose at time of OK cuff button press.
+
+    The returned pose matches """
     button = CuffOKButton(limb_name)
     rate = rospy.Rate(20)  # rate at which we check whether button was
                            # pressed or not
@@ -40,12 +47,29 @@ def limb_pose(limb_name):
         'Waiting for %s OK cuff button press to save pose' % limb_name)
     while not button.pressed and not rospy.is_shutdown():
         rate.sleep()
-    joint_pose = baxter_interface.Limb(limb_name).joint_angles()
-    # Now convert joint coordinates to end effector cartesian
-    # coordinates using forward kinematics.
-    kinematics = baxter_kinematics(limb_name)
-    endpoint_pose = kinematics.forward_position_kinematics(joint_pose)
+    endpoint_pose = baxter_interface.Limb(limb_name).endpoint_pose()
     return endpoint_pose
+    # How is
+    # baxter_kinematics(limb_name).forward_position_kinematics(
+    #     baxter_interface.Limb(limb_name).joint_angles())
+    # different from
+    # baxter_interface.Limb(limb_name).endpoint_pose()
+    # After some testing, we find that the differences are
+    # negligible. In rviz, pretty much the same. In numerical terms,
+    # they agree to at least two significant figures.
+    # Eg:
+    """
+    baxter_interface endpoint pose:
+    {'position': Point(x=0.8175678653720638,
+                       y=0.11419185934519176,
+                       z=-0.18813767395654984),
+     'orientation': Quaternion(x=0.9983899777382322,
+                               y=-0.008582355126430147,
+                               z=0.051452248110337225,
+                               w=-0.022281420437849815)}
+    pykdl forward kinematics endpoint pose:
+    [ 0.81954073  0.11447536 -0.18811824
+      0.9983032  -0.00843487  0.0532936  -0.02189443]"""
 
 
 class Baxter(object):
@@ -70,6 +94,7 @@ class Baxter(object):
 
         """
         pregrasp_pose = self.translate(pose, direction, distance)
+        self.limb.set_joint_position_speed(0.02)
         self.move_ik(pregrasp_pose)
         # We want to block end effector opening so that the next
         # movement happens with the gripper fully opened.
@@ -198,6 +223,73 @@ class Baxter(object):
         return xyz + qxqyqzqw
 
 
+class PickAndPlaceNode(object):
+    def __init__(self, limb_name):
+        rospy.init_node("pp_node")
+        self.limb_name = limb_name
+        self.baxter = Baxter(limb_name)
+        self.place_pose = limb_pose(limb_name)
+        self.tf = tf.TransformListener()
+        self.num_objects = 0
+        # Would this work too? Both tf and tf2 have (c) 2008...
+        # self.tf2 = tf2_ros.TransformListener()
+        self.keyboard_sub = rospy.Subscriber("/keyboard/keyup",
+                                             Key,
+                                             self.handle_keyboard,
+                                             queue_size=1)
+        self.n_objects_sub = rospy.Subcriber("/num_objects", Int64,
+                                             self.update_num_objects,
+                                             queue_size=1)
+        self.br = tf.TransformBroadcaster()
+
+    def update_num_objects(self, msg):
+        self.num_objects = msg.data
+
+    def _pick(self, frame_name):
+        rospy.loginfo("Picking object " + frame_name[-1:] + "...")
+        if self.tf.frameExists("/base") and self.tf.frameExists(frame_name):
+            t = self.tf.getLatestCommonTime("/base", frame_name)
+            position, quaternion = self.tf.lookupTransform("/base", frame_name, t)
+            print("position", position)
+            print("quaternion", quaternion)
+            position = list(position)
+            # Vertical orientation
+            self.br.sendTransform(position,
+                                  [1, 0, 0, 0],
+                                  rospy.Time.now(),
+                                  "pick_pose",
+                                  "/base")
+            self.baxter.pick(position + [1, 0, 0, 0])
+
+    def handle_keyboard(self, key):
+        # First set mode (picking/placing)
+        if key.code == ord('a'):
+            self.mode = 'picking'
+        elif key.code == ord('s'):
+            self.mode = 'placing'
+        if self.mode == 'picking':
+            try:
+                obj_to_get = int(chr(key.code))
+            except ValueError:
+                rospy.logerr("Please provide a number in picking mode")
+                return
+            frame_name = "imarker_pose_{}".format(obj_to_get)
+            self._pick(frame_name)
+        elif self.mode == 'placing':
+            rospy.loginfo("Placing...")
+            pose_list = ([getattr(self.place_pose['position'], i) for i in
+                          ('x', 'y', 'z')] +
+                         [getattr(self.place_pose['orientation'], i) for i in
+                          ('x', 'y', 'z', 'w')])
+            self.br.sendTransform(pose_list[:3],
+                                  pose_list[3:],
+                                  rospy.Time.now(),
+                                  "place_pose",
+                                  "/base")
+            self.baxter.place(pose_list)
+            self.place_pose['position'].x += 0.04
+
+
 def main(limb_name, reset):
     """
     Parameters
@@ -250,4 +342,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args(rospy.myargv()[1:])
 
-    main(args.limb, args.reset)
+    #main(args.limb, args.reset)
+    c = PickAndPlaceNode('left')
+    rospy.spin()
