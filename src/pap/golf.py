@@ -273,7 +273,7 @@ class PickAndPlaceNode(object):
             except ValueError:
                 rospy.logerr("Please provide a number in picking mode")
                 return
-            frame_name = "imarker_pose_{}".format(obj_to_get)
+            frame_name = "object_pose_{}".format(obj_to_get)
             self._pick(frame_name)
         elif self.mode == 'placing':
             rospy.loginfo("Placing...")
