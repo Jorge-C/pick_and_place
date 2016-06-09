@@ -48,7 +48,11 @@ def limb_pose(limb_name):
     while not button.pressed and not rospy.is_shutdown():
         rate.sleep()
     endpoint_pose = baxter_interface.Limb(limb_name).endpoint_pose()
-    return endpoint_pose
+    pose_list = ([getattr(endpoint_pose['position'], i) for i in
+                  ('x', 'y', 'z')] +
+                 [getattr(endpoint_pose['orientation'], i) for i in
+                  ('x', 'y', 'z', 'w')])
+    return pose_list
     # How is
     # baxter_kinematics(limb_name).forward_position_kinematics(
     #     baxter_interface.Limb(limb_name).joint_angles())
@@ -94,7 +98,7 @@ class Baxter(object):
 
         """
         pregrasp_pose = self.translate(pose, direction, distance)
-        self.limb.set_joint_position_speed(0.02)
+        self.limb.set_joint_position_speed(0.1)
         self.move_ik(pregrasp_pose)
         # We want to block end effector opening so that the next
         # movement happens with the gripper fully opened.

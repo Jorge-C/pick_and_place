@@ -31,7 +31,9 @@ class PickAndPlaceNode(object):
 
         self.limb_name = limb_name
         self.baxter = Baxter(limb_name)
-        self.place_pose = limb_pose(limb_name)
+        # Hardcoded place for now
+        self.place_pose = [0.526025806104, 0.47801445746, -0.1613261530885,
+                           1, 0, 0, 0]
         self.tf = tf.TransformListener()
         self.num_objects = 0
         # Would this work too? Both tf and tf2 have (c) 2008...
@@ -71,17 +73,15 @@ class PickAndPlaceNode(object):
     def _place(self):
         self.state = "place"
         rospy.loginfo("Placing...")
-        pose_list = ([getattr(self.place_pose['position'], i) for i in
-                      ('x', 'y', 'z')] +
-                     [getattr(self.place_pose['orientation'], i) for i in
-                      ('x', 'y', 'z', 'w')])
-        self.br.sendTransform(pose_list[:3],
-                              pose_list[3:],
+
+        self.br.sendTransform(self.place_pose[:3],
+                              self.place_pose[3:],
                               rospy.Time.now(),
                               "place_pose",
                               "/base")
-        self.baxter.place(pose_list)
-        self.place_pose['position'].x += 0.04
+        self.baxter.place(self.place_pose)
+        # Order is x y z qx qy qz qw
+        self.place_pose[2] += 0.04
 
     def _pick(self):
         # State not modified until picking succeeds
