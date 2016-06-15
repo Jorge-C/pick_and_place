@@ -7,7 +7,10 @@ import rospy
 import tf
 
 from std_msgs.msg import Int64, Bool
+from geometry_msgs.msg import Pose
 from keyboard.msg import Key
+from teleop_interface.msg import IMarker
+
 
 from .robot import Baxter, limb_pose
 
@@ -52,6 +55,10 @@ class PickAndPlaceNode(object):
                                              Bool,
                                              queue_size=1)
         self.br = tf.TransformBroadcaster()
+
+        self.imarker_pub = rospy.Publisher("/imarker/add_pose",
+                                           IMarker,
+                                           queue_size=1)
 
     def update_num_objects(self, msg):
         self.num_objects = msg.data
@@ -101,6 +108,8 @@ class PickAndPlaceNode(object):
                                                            t)
             print("position", position)
             print("quaternion", quaternion)
+            self.imarker_pub.publish(IMarker("imarker_{}".format(obj_to_get),
+                                             Pose(position, quaternion)))
             position = list(position)
             # Vertical orientation
             self.br.sendTransform(position,
