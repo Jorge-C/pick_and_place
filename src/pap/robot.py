@@ -100,11 +100,14 @@ class Baxter(object):
         pregrasp_pose = self.translate(pose, direction, distance)
         self.limb.set_joint_position_speed(0.1)
         self.move_ik(pregrasp_pose)
+        rospy.sleep(0.1)
         # We want to block end effector opening so that the next
         # movement happens with the gripper fully opened.
         self.gripper.open(block=True)
         self.move_ik(pose)
+        rospy.sleep(0.1)
         self.gripper.close(block=True)
+        rospy.sleep(0.1)
         self.move_ik(pregrasp_pose)
 
     def place(self, pose, direction=(0, 0, 1), distance=0.1):
@@ -112,10 +115,25 @@ class Baxter(object):
         open, go to pose + pick_direction * pick_distance.
 
         """
+        try:
+            pose = list(pose)
+        except TypeError:
+            # We're getting an actual geometry_msgs.msg.Pose
+            pose = [pose.position.x,
+                    pose.position.y,
+                    pose.position.z,
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                    pose.orientation.w]
+
         pregrasp_pose = self.translate(pose, direction, distance)
         self.move_ik(pregrasp_pose)
+        rospy.sleep(0.1)
         self.move_ik(pose)
+        rospy.sleep(0.1)
         self.gripper.open(block=True)
+        rospy.sleep(0.1)
         self.move_ik(pregrasp_pose)
 
     @staticmethod

@@ -7,12 +7,23 @@ import rospy
 import tf
 
 from std_msgs.msg import Int64, Bool
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, Point, Quaternion
 from keyboard.msg import Key
-from teleop_interface.msg import IMarker
+
+from interactive_markers.interactive_marker_server import (
+    InteractiveMarkerServer
+    )
+
+from .robot import Baxter
+from .interactive_marker import make_interactive_marker
 
 
-from .robot import Baxter, limb_pose
+def Point2list(point):
+    return [point.x, point.y, point.z]
+
+
+def Quaternion2list(quaternion):
+    return [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
 
 
 class PickAndPlaceNode(object):
@@ -22,11 +33,13 @@ class PickAndPlaceNode(object):
         _post_perceive_trans = defaultdict(lambda: self._pick)
         _post_perceive_trans.update({'c': self._calibrate})
         self.transition_table = {
-            'initial': {'c': self._calibrate},
+            # If calibration has already happened, allow skipping it
+            'initial': {'c': self._calibrate, 'q': self._perceive},
             'calibrate': {'q': self._perceive, 'c': self._calibrate},
             'perceive': {'q': self._post_perceive},
             'post_perceive': _post_perceive_trans,
-            'postpick': {'s': self._place},
+            'postpick': {'s': self._preplace},
+            'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
 
@@ -35,8 +48,8 @@ class PickAndPlaceNode(object):
         self.limb_name = limb_name
         self.baxter = Baxter(limb_name)
         # Hardcoded place for now
-        self.place_pose = [0.526025806104, 0.47801445746, -0.1613261530885,
-                           1, 0, 0, 0]
+        self.place_pose = Pose(Point(0.526025806, 0.4780144, -0.161326153),
+                               Quaternion(1, 0, 0, 0))
         self.tf = tf.TransformListener()
         self.num_objects = 0
         # Would this work too? Both tf and tf2 have (c) 2008...
@@ -56,9 +69,9 @@ class PickAndPlaceNode(object):
                                              queue_size=1)
         self.br = tf.TransformBroadcaster()
 
-        self.imarker_pub = rospy.Publisher("/imarker/add_pose",
-                                           IMarker,
-                                           queue_size=1)
+        self.int_marker_server = InteractiveMarkerServer('int_markers')
+        # Dict to map imarker names and their updated poses
+        self.int_markers = {}
 
     def update_num_objects(self, msg):
         self.num_objects = msg.data
@@ -77,18 +90,39 @@ class PickAndPlaceNode(object):
         rospy.loginfo("Asking to stop perception...")
         self.perception_pub.publish(Bool(False))
 
+    def _preplace(self):
+        self.state = "preplace"
+        rospy.loginfo("Adjusting place position...")
+        imarker_name = 'place_pose'
+        self.int_markers[imarker_name] = self.place_pose
+        imarker = make_interactive_marker(imarker_name,
+                                          self.place_pose)
+        self.int_marker_server.insert(imarker, self.imarker_callback)
+        self.int_marker_server.applyChanges()
+
+    def imarker_callback(self, msg):
+        # http://docs.ros.org/jade/api/visualization_msgs/html/msg/InteractiveMarkerFeedback.htmln # noqa
+        name = msg.marker_name
+        new_pose = msg.pose
+        self.int_markers[name] = new_pose
+
     def _place(self):
         self.state = "place"
         rospy.loginfo("Placing...")
 
-        self.br.sendTransform(self.place_pose[:3],
-                              self.place_pose[3:],
+        place_pose = self.int_markers['place_pose']
+        # It seems positions and orientations are randomly required to
+        # be actual Point and Quaternion objects or lists/tuples. The
+        # least coherent API ever seen.
+        self.br.sendTransform(Point2list(place_pose.position),
+                              Quaternion2list(place_pose.orientation),
                               rospy.Time.now(),
                               "place_pose",
                               "/base")
-        self.baxter.place(self.place_pose)
+        self.baxter.place(place_pose)
         # Order is x y z qx qy qz qw
-        self.place_pose[2] += 0.04
+        place_pose.position.z += 0.05
+        self.place_pose = place_pose
 
     def _pick(self):
         # State not modified until picking succeeds
@@ -108,8 +142,7 @@ class PickAndPlaceNode(object):
                                                            t)
             print("position", position)
             print("quaternion", quaternion)
-            self.imarker_pub.publish(IMarker("imarker_{}".format(obj_to_get),
-                                             Pose(position, quaternion)))
+
             position = list(position)
             # Vertical orientation
             self.br.sendTransform(position,
