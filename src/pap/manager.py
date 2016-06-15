@@ -6,8 +6,8 @@ import rospy
 
 import tf
 
-from std_msgs.msg import Int64, Bool
-from geometry_msgs.msg import Pose, Point, Quaternion
+from std_msgs.msg import Header, Int64, Bool
+from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion
 from keyboard.msg import Key
 
 from interactive_markers.interactive_marker_server import (
@@ -16,14 +16,7 @@ from interactive_markers.interactive_marker_server import (
 
 from .robot import Baxter
 from .interactive_marker import make_interactive_marker
-
-
-def Point2list(point):
-    return [point.x, point.y, point.z]
-
-
-def Quaternion2list(quaternion):
-    return [quaternion.x, quaternion.y, quaternion.z, quaternion.w]
+from .utils import Point2list, Quaternion2list
 
 
 class PickAndPlaceNode(object):
@@ -50,7 +43,7 @@ class PickAndPlaceNode(object):
         # Hardcoded place for now
         self.place_pose = Pose(Point(0.526025806, 0.4780144, -0.161326153),
                                Quaternion(1, 0, 0, 0))
-        self.tf = tf.TransformListener()
+        self.tl = tf.TransformListener()
         self.num_objects = 0
         # Would this work too? Both tf and tf2 have (c) 2008...
         # self.tf2 = tf2_ros.TransformListener()
@@ -135,9 +128,9 @@ class PickAndPlaceNode(object):
         frame_name = "object_pose_{}".format(obj_to_get)
 
         rospy.loginfo("Picking object {}...".format(obj_to_get))
-        if self.tf.frameExists("/base") and self.tf.frameExists(frame_name):
-            t = self.tf.getLatestCommonTime("/base", frame_name)
-            position, quaternion = self.tf.lookupTransform("/base",
+        if self.tl.frameExists("/base") and self.tl.frameExists(frame_name):
+            t = self.tl.getLatestCommonTime("/base", frame_name)
+            position, quaternion = self.tl.lookupTransform("/base",
                                                            frame_name,
                                                            t)
             print("position", position)
@@ -150,7 +143,14 @@ class PickAndPlaceNode(object):
                                   rospy.Time.now(),
                                   "pick_pose",
                                   "/base")
-            self.baxter.pick(position + [1, 0, 0, 0])
+            # Ignore orientation from perception
+            pose = Pose(Point(*position),
+                        Quaternion(1, 0, 0, 0))
+            h = Header()
+            h.stamp = t
+            h.frame_id = "base"
+            stamped_pose = PoseStamped(h, pose)
+            self.baxter.pick(stamped_pose)
             self.state = 'postpick'
 
     def handle_keyboard(self, key):

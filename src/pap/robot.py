@@ -1,22 +1,26 @@
 #!/usr/bin/env python
 from __future__ import division, print_function
 
-from itertools import chain, repeat
+import numpy as np
 
 import rospy
+
+from std_msgs.msg import Header
+from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
+
 import baxter_interface
-from moveit_commander import conversions
+# Not used currently, but interesting module!
+# from moveit_commander import conversions
 from baxter_core_msgs.srv import SolvePositionIK, SolvePositionIKRequest
 from baxter_core_msgs.msg import DigitalIOState
-
-from std_msgs.msg import Int64
-from keyboard.msg import Key
 
 # Apparently tf was deprecated a long time ago? And we should use tf2?
 import tf
 # import tf2_ros
 
 from baxter_pykdl import baxter_kinematics
+
+from .utils import Point2list
 
 
 class CuffOKButton(object):
@@ -80,7 +84,12 @@ class Baxter(object):
     """Add higher level operations to Baxter."""
     def __init__(self, limb_name, gripper=None):
         self.limb_name = limb_name
+        self.other_limb_name = {'right': 'left',
+                                'left': 'right'}[limb_name]
+
         self.limb = baxter_interface.Limb(limb_name)
+        self.limb.set_joint_position_speed(0.1)
+
         if gripper is None:
             self.gripper = baxter_interface.Gripper(limb_name)
         else:
@@ -92,22 +101,25 @@ class Baxter(object):
         # Calibrate gripper
         self.gripper.calibrate()
 
+        self.kinematics = baxter_kinematics(self.limb_name)
+        self.tl = tf.TransformListener()
+
     def pick(self, pose, direction=(0, 0, 1), distance=0.1):
         """Go to pose + pick_direction * pick_distance, open, go to pose,
         close, go to pose + pick_direction * pick_distance.
 
         """
         pregrasp_pose = self.translate(pose, direction, distance)
-        self.limb.set_joint_position_speed(0.1)
+
         self.move_ik(pregrasp_pose)
-        rospy.sleep(0.1)
+        rospy.sleep(0.5)
         # We want to block end effector opening so that the next
         # movement happens with the gripper fully opened.
         self.gripper.open(block=True)
         self.move_ik(pose)
-        rospy.sleep(0.1)
+        rospy.sleep(0.5)
         self.gripper.close(block=True)
-        rospy.sleep(0.1)
+        rospy.sleep(0.5)
         self.move_ik(pregrasp_pose)
 
     def place(self, pose, direction=(0, 0, 1), distance=0.1):
@@ -115,60 +127,63 @@ class Baxter(object):
         open, go to pose + pick_direction * pick_distance.
 
         """
-        try:
-            pose = list(pose)
-        except TypeError:
-            # We're getting an actual geometry_msgs.msg.Pose
-            pose = [pose.position.x,
-                    pose.position.y,
-                    pose.position.z,
-                    pose.orientation.x,
-                    pose.orientation.y,
-                    pose.orientation.z,
-                    pose.orientation.w]
-
-        pregrasp_pose = self.translate(pose, direction, distance)
-        self.move_ik(pregrasp_pose)
-        rospy.sleep(0.1)
+        preplace_pose = self.translate(pose, direction, distance)
+        self.move_ik(preplace_pose)
+        rospy.sleep(0.5)
         self.move_ik(pose)
-        rospy.sleep(0.1)
+        rospy.sleep(0.5)
         self.gripper.open(block=True)
-        rospy.sleep(0.1)
-        self.move_ik(pregrasp_pose)
+        rospy.sleep(0.5)
+        self.move_ik(preplace_pose)
 
-    @staticmethod
-    def to_stamped_pose(pose):
-        """Take a xyzrpy or xyz qxqyqzqw pose and convert it to a stamped
-        pose (quaternion as orientation).
+    def compute_joint_velocities(self, cartesian_velocities, jinv=None):
+        """Given cartesian end effector velocities (in the base coordinate
+        system), compute the necessary joint velocities to move it in
+        that way.
 
-        """
-        stamped_pose = conversions.list_to_pose_stamped(pose, "base")
-        return stamped_pose
-
-    @staticmethod
-    def translate(pose, direction, distance):
-        """Get an xyz rpy or xyz qxqyqzqw pose and add direction * distance to
-        xyz. There's probably a better way to do this.
+        It can reuse a jacobian pseudo inverse, which is particularly
+        useful to avoid excessive computations for small
+        displacements.
 
         """
-        scaled_direction = [distance * di for di in direction]
-        translated_pose = [pi + di for pi, di in
-                           zip(pose,
-                               chain(scaled_direction,
-                                     repeat(0, len(pose) - 3)))]
-        return translated_pose
+        if jinv is None:
+            self.jinv = self.kinematics.jacobian_pseudo_inverse()
+        else:
+            self.jinv = jinv
+        joint_v = np.squeeze(np.asarray(self.jinv.dot(cartesian_velocities)))
+        joint_v_dict = {'{}_{}'.format(self.limb_name, joint_name): val for
+                        joint_name, val in zip(['s0', 's1', 'e0', 'e1',
+                                                'w0', 'w1', 'w2'],
+                                               joint_v)}
+        joint_v_dict.update(
+            {'{}_{}'.format(self.other_limb_name, joint_name): 0.0 for
+             joint_name in ['s0', 's1', 'e0', 'e1', 'w0', 'w1', 'w2']})
+        joint_v_dict.update(
+            {'head_nod': 0.0, 'head_pan': 0.0, 'torso_t0': 0.0})
+        return joint_v_dict
 
-    def ik_quaternion(self, quaternion_pose):
-        """Take a xyz qxqyqzqw stamped pose and convert it to joint angles
-        using IK. You can call self.limb.move_to_joint_positions to
-        move to those angles
+    def translate(self, pose, direction, distance, tf='base'):
+        """Get an PoseStamped msg and apply a translation direction * distance
+        (in the frame tf).
+
+        """
+        # Let's get the pose, move it to the tf frame, and then
+        # translate it
+        base_pose = self.tl.transformPose("base", pose)
+        base_pose.position = Point(*np.array(direction) * distance +
+                                   Point2list(base_pose.position))
+        return base_pose
+
+    def ik_quaternion(self, stamped_pose):
+        """Take a PoseStamped and convert it to joint angles using IK. You can
+        call self.limb.move_to_joint_positions to move to those angles
 
         """
         node = ("ExternalTools/{}/PositionKinematicsNode/"
                 "IKService".format(self.limb_name))
         ik_service = rospy.ServiceProxy(node, SolvePositionIK)
         ik_request = SolvePositionIKRequest()
-        ik_request.pose_stamp.append(quaternion_pose)
+        ik_request.pose_stamp.append(stamped_pose)
         try:
             rospy.loginfo('ik: waiting for IK service...')
             rospy.wait_for_service(node, 5.0)
@@ -185,12 +200,12 @@ class Baxter(object):
             else:
                 rospy.logerr('ik_move: no valid configuration found')
 
-    def move_ik(self, pose):
-        """Take a pose (either xyz rpy or xyz qxqyqzqw) and move the arm
-        there.
+    def move_ik(self, stamped_pose):
+        """Take a PoseStamped and move the arm there.
 
         """
-        stamped_pose = self.to_stamped_pose(pose)
+        if not isinstance(stamped_pose, PoseStamped):
+            raise TypeError("No duck typing here? :(")
         joint_pose = self.ik_quaternion(stamped_pose)
         return self.limb.move_to_joint_positions(joint_pose)
 
@@ -215,14 +230,23 @@ class Baxter(object):
 
         Examples
         --------
-        baxter.move_relative([0, 0, 0, 0, 0, 0, 1])  # No movement
-        baxter.move_relative([x, y, z, 0, 0, 0, 1])  # End effector translation
+        # No movement
+        baxter.move_relative(Pose(Point(0, 0, 0), Quaternion(0, 0, 0, 1)))
+        # End effector translation
+        baxter.move_relative(Pose(Point(x, y, z), Quaternion(0, 0, 0, 1)))
         """
+        # Why use a geometry_msgs.msg.Pose for a pose when rethink can
+        # invent its own?
         current_pose = self.limb.endpoint_pose()
-        xyz = current_pose['position']
-        qxqyqzqw = current_pose['orientation']
-        current_pose = list(xyz) + list(qxqyqzqw)
-        final_pose = self._compose(current_pose, pose)
+        # Convert to actual Pose type
+        current_pose = Pose(Point(*current_pose['position']),
+                            Quaternion(*current_pose['orientation']))
+        h = Header()
+        h.stamp = rospy.Time.now()
+        h.frame_id = '{}_gripper'.format(self.limb_name)
+        stamped_rel_pose = PoseStamped(h,
+                                       pose)
+        final_pose = self.tl.transformPose("base", stamped_rel_pose)
         self.move_ik(final_pose)
 
     @staticmethod
@@ -234,15 +258,6 @@ class Baxter(object):
             return pose
         else:
             raise TypeError('Pose needs to be xyzrpy or xyzqxqyqzq')
-
-    def _compose(self, pose1, pose2):
-        """Compose two poses xyz qxqyqzqw. There must be a library to do it."""
-        pose1 = self._to_quaternion_pose(pose1)
-        pose2 = self._to_quaternion_pose(pose2)
-        xyz = [x1 + x2 for x1, x2 in zip(pose1[:3], pose2[:3])]
-        qxqyqzqw = tf.transformations.quaternion_multiply(pose1[3:],
-                                                          pose2[3:]).tolist()
-        return xyz + qxqyqzqw
 
 
 def main(limb_name, reset):
