@@ -94,10 +94,10 @@ class PickAndPlaceNode(object):
         self.int_marker_server.applyChanges()
 
     def imarker_callback(self, msg):
-        # http://docs.ros.org/jade/api/visualization_msgs/html/msg/InteractiveMarkerFeedback.htmln # noqa
+        # http://docs.ros.org/jade/api/visualization_msgs/html/msg/InteractiveMarkerFeedback.html # noqa
         name = msg.marker_name
         new_pose = msg.pose
-        self.int_markers[name] = new_pose
+        self.int_markers[name] = PoseStamped(msg.header, new_pose)
 
     def _place(self):
         self.state = "place"
@@ -107,14 +107,14 @@ class PickAndPlaceNode(object):
         # It seems positions and orientations are randomly required to
         # be actual Point and Quaternion objects or lists/tuples. The
         # least coherent API ever seen.
-        self.br.sendTransform(Point2list(place_pose.position),
-                              Quaternion2list(place_pose.orientation),
+        self.br.sendTransform(Point2list(place_pose.pose.position),
+                              Quaternion2list(place_pose.pose.orientation),
                               rospy.Time.now(),
                               "place_pose",
                               "/base")
         self.baxter.place(place_pose)
-        # Order is x y z qx qy qz qw
-        place_pose.position.z += 0.05
+
+        place_pose.pose.position.z += 0.05
         self.place_pose = place_pose
 
     def _pick(self):

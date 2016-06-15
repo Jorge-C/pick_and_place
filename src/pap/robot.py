@@ -170,8 +170,8 @@ class Baxter(object):
         # Let's get the pose, move it to the tf frame, and then
         # translate it
         base_pose = self.tl.transformPose("base", pose)
-        base_pose.position = Point(*np.array(direction) * distance +
-                                   Point2list(base_pose.position))
+        base_pose.pose.position = Point(*np.array(direction) * distance +
+                                        Point2list(base_pose.pose.position))
         return base_pose
 
     def ik_quaternion(self, stamped_pose):
