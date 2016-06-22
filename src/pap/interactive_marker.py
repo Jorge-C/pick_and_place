@@ -11,7 +11,7 @@ def make_interactive_marker(name, pose, frame='base', color=(0.5, 0.5, 0.5)):
     int_marker.header.frame_id = frame
     int_marker.header.stamp = rospy.Time.now()
 
-    int_marker.scale = 0.25
+    int_marker.scale = 0.125
     int_marker.name = name
     int_marker.description = "interactive marker"
 
