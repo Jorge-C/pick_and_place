@@ -19,9 +19,35 @@ from .interactive_marker import make_interactive_marker
 from .utils import Point2list, Quaternion2list
 
 
-class PickAndPlaceNode(object):
+class Manager(object):
+    def __init__(self, name):
+        rospy.init_node(name)
+
+        self.transition_table = None
+        self.state = 'initial'
+
+        self.keyboard_sub = rospy.Subscriber("/keyboard/keyup",
+                                             Key,
+                                             self.handle_keyboard,
+                                             queue_size=1)
+
+    def handle_keyboard(self, key):
+        self.character = chr(key.code)
+        try:
+            next_state = self.transition_table[self.state][self.character]
+        except KeyError:
+            rospy.logerr(
+                "Make sure input ({}) given"
+                " state ({}) is valid!".format(input, self.state)
+            )
+            return
+
+        next_state()
+
+
+class PickAndPlaceNode(Manager):
     def __init__(self, limb_name):
-        rospy.init_node("pp_node")
+        super(PickAndPlaceNode, self).__init__('pp_node')
 
         _post_perceive_trans = defaultdict(lambda: self._pick)
         _post_perceive_trans.update({'c': self._calibrate})
@@ -35,9 +61,6 @@ class PickAndPlaceNode(object):
             'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
-
-        self.state = 'initial'
-
         self.limb_name = limb_name
         self.baxter = Baxter(limb_name)
         # Hardcoded place for now
@@ -47,10 +70,6 @@ class PickAndPlaceNode(object):
         self.num_objects = 0
         # Would this work too? Both tf and tf2 have (c) 2008...
         # self.tf2 = tf2_ros.TransformListener()
-        self.keyboard_sub = rospy.Subscriber("/keyboard/keyup",
-                                             Key,
-                                             self.handle_keyboard,
-                                             queue_size=1)
         self.n_objects_sub = rospy.Subscriber("/num_objects", Int64,
                                               self.update_num_objects,
                                               queue_size=1)
@@ -152,16 +171,3 @@ class PickAndPlaceNode(object):
             stamped_pose = PoseStamped(h, pose)
             self.baxter.pick(stamped_pose)
             self.state = 'postpick'
-
-    def handle_keyboard(self, key):
-        self.character = chr(key.code)
-        try:
-            next_state = self.transition_table[self.state][self.character]
-        except KeyError:
-            rospy.logerr(
-                "Make sure input ({}) given"
-                " state ({}) is valid!".format(input, self.state)
-            )
-            return
-
-        next_state()
