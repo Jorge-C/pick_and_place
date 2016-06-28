@@ -312,6 +312,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args(rospy.myargv()[1:])
 
-    #main(args.limb, args.reset)
-    c = PickAndPlaceNode('left')
+    # main(args.limb, args.reset)
+    # c = PickAndPlaceNode('left')
     rospy.spin()
