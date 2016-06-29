@@ -46,7 +46,7 @@ class Manager(object):
 
 
 class PickAndPlaceNode(Manager):
-    def __init__(self, limb_name):
+    def __init__(self, limb_name, baxter=Baxter):
         super(PickAndPlaceNode, self).__init__('pp_node')
 
         _post_perceive_trans = defaultdict(lambda: self._pick)
@@ -62,10 +62,12 @@ class PickAndPlaceNode(Manager):
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
         self.limb_name = limb_name
-        self.baxter = Baxter(limb_name)
+        self.baxter = baxter(limb_name)
         # Hardcoded place for now
-        self.place_pose = Pose(Point(0.526025806, 0.4780144, -0.161326153),
-                               Quaternion(1, 0, 0, 0))
+        self.place_pose = PoseStamped(
+            Header(0, rospy.Time(0), 'base'),
+            Pose(Point(0.526025806, 0.4780144, -0.161326153),
+                 Quaternion(1, 0, 0, 0)))
         self.tl = tf.TransformListener()
         self.num_objects = 0
         # Would this work too? Both tf and tf2 have (c) 2008...
@@ -108,12 +110,15 @@ class PickAndPlaceNode(Manager):
         imarker_name = 'place_pose'
         self.int_markers[imarker_name] = self.place_pose
         imarker = make_interactive_marker(imarker_name,
-                                          self.place_pose)
+                                          self.place_pose.pose)
         self.int_marker_server.insert(imarker, self.imarker_callback)
+        self.int_marker_server.setCallback(imarker_name, self.imarker_callback)
         self.int_marker_server.applyChanges()
+        rospy.loginfo("imarker stuff done")
 
     def imarker_callback(self, msg):
         # http://docs.ros.org/jade/api/visualization_msgs/html/msg/InteractiveMarkerFeedback.html # noqa
+        rospy.loginfo('imarker_callback called')
         name = msg.marker_name
         new_pose = msg.pose
         self.int_markers[name] = PoseStamped(msg.header, new_pose)
