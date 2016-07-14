@@ -51,13 +51,14 @@ class PickAndPlaceNode(Manager):
 
         _post_perceive_trans = defaultdict(lambda: self._pick)
         _post_perceive_trans.update({'c': self._calibrate})
+        _preplace = defaultdict(lambda: self._preplace)
         self.transition_table = {
             # If calibration has already happened, allow skipping it
-            'initial': {'c': self._calibrate, 'q': self._perceive},
+            'initial': {'c': self._calibrate, 'q': self._perceive, 's': self._preplace},
             'calibrate': {'q': self._perceive, 'c': self._calibrate},
             'perceive': {'q': self._post_perceive},
             'post_perceive': _post_perceive_trans,
-            'postpick': {'s': self._preplace},
+            'postpick': _preplace,
             'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
@@ -105,7 +106,27 @@ class PickAndPlaceNode(Manager):
         self.perception_pub.publish(Bool(False))
 
     def _preplace(self):
+        # State not modified until placing succeeds
+        try:
+            obj_to_get = int(self.character)
+        except ValueError:
+            rospy.logerr("Please provide a number in placing mode")
+            return
         self.state = "preplace"
+        frame_name = "object_pose_{}".format(obj_to_get)
+
+        rospy.loginfo(
+            "Placing object on top of object {}...".format(obj_to_get))
+        if self.tl.frameExists("/base") and self.tl.frameExists(frame_name):
+            t = self.tl.getLatestCommonTime("/base", frame_name)
+            position, quaternion = self.tl.lookupTransform("/base",
+                                                           frame_name,
+                                                           t)
+            position = list(position)
+            position[2] += 0.05
+            # Update pose position from perception
+            self.place_pose.pose.position = Point(*position)
+
         rospy.loginfo("Adjusting place position...")
         imarker_name = 'place_pose'
         self.int_markers[imarker_name] = self.place_pose
