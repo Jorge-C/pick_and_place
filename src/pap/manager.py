@@ -59,16 +59,21 @@ class PickAndPlaceNode(Manager):
         _preplace = defaultdict(lambda: self._preplace)
         self.transition_table = {
             # If calibration has already happened, allow skipping it
-            'initial': {'c': self._calibrate, 'q': self._perceive, 's': self._preplace},
+            'initial': {'c': self._calibrate, 'q': self._perceive,
+                        's': self._preplace},
             'calibrate': {'q': self._perceive, 'c': self._calibrate},
             'perceive': {'q': self._post_perceive},
             'post_perceive': _post_perceive_trans,
-            'postpick': _preplace,
+            'postpick': {'1': self._level, '2': self._level},
+            'level': _preplace,
             'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
         self.limb_name = limb_name
+
         self.baxter = baxter(limb_name)
+        self.baxter.level = 1
+
         # Hardcoded place for now
         self.place_pose = PoseStamped(
             Header(0, rospy.Time(0), 'base'),
@@ -131,7 +136,8 @@ class PickAndPlaceNode(Manager):
                                                            frame_name,
                                                            t)
             position = list(position)
-            position[2] += 0.05
+            # Height of cubelet
+            position[2] += self.baxter.level * 0.042
             # Update pose position from perception
             self.place_pose.pose.position = Point(*position)
 
@@ -140,6 +146,7 @@ class PickAndPlaceNode(Manager):
         self.int_markers[imarker_name] = self.place_pose
         imarker = make_interactive_marker(imarker_name,
                                           self.place_pose.pose)
+        # TODO delete imarker at post place
         self.int_marker_server.insert(imarker, self.imarker_callback)
         self.int_marker_server.setCallback(imarker_name, self.imarker_callback)
         self.int_marker_server.applyChanges()
@@ -205,3 +212,7 @@ class PickAndPlaceNode(Manager):
             stamped_pose = PoseStamped(h, pose)
             self.baxter.pick(stamped_pose)
             self.state = 'postpick'
+
+    def _level(self):
+        self.baxter.level = int(self.character)
+        self.state = 'level'
