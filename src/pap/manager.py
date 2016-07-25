@@ -43,6 +43,11 @@ class Manager(object):
             return
 
         next_state()
+        self.show_options()
+
+    def show_options(self):
+        rospy.loginfo("Possible options are: {}".format(
+            ', '.join(self.transition_table[self.state].keys())))
 
 
 class PickAndPlaceNode(Manager):
@@ -87,6 +92,9 @@ class PickAndPlaceNode(Manager):
         self.int_marker_server = InteractiveMarkerServer('int_markers')
         # Dict to map imarker names and their updated poses
         self.int_markers = {}
+
+        # Ideally this call would be in a Factory/Metaclass/Parent
+        self.show_options()
 
     def update_num_objects(self, msg):
         self.num_objects = msg.data
