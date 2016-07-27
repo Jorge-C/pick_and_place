@@ -137,7 +137,9 @@ class PickAndPlaceNode(Manager):
                                                            t)
             position = list(position)
             # Height of cubelet
-            position[2] += self.baxter.level * 0.042
+            # position[2] += self.baxter.level * 0.042
+            # YCB
+            position[2] += self.baxter.level * 0.026
             # Update pose position from perception
             self.place_pose.pose.position = Point(*position)
 
@@ -174,7 +176,10 @@ class PickAndPlaceNode(Manager):
                               "/base")
         self.baxter.place(place_pose)
 
-        place_pose.pose.position.z += 0.05
+        # For cubelets:
+        # place_pose.pose.position.z += 0.042
+        # For YCB:
+        place_pose.pose.position.z += 0.026
         self.place_pose = place_pose
 
     def _pick(self):
