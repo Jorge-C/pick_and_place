@@ -64,7 +64,7 @@ class PickAndPlaceNode(Manager):
             'calibrate': {'q': self._perceive, 'c': self._calibrate},
             'perceive': {'q': self._post_perceive},
             'post_perceive': _post_perceive_trans,
-            'postpick': {'1': self._level, '2': self._level},
+            'postpick': {'1': self._level, '2': self._level, '9': self._level},
             'level': _preplace,
             'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
@@ -137,9 +137,9 @@ class PickAndPlaceNode(Manager):
                                                            t)
             position = list(position)
             # Height of cubelet
-            # position[2] += self.baxter.level * 0.042
+            position[2] += self.baxter.level * 0.042
             # YCB
-            position[2] += self.baxter.level * 0.026
+            # position[2] += self.baxter.level * 0.026
             # Update pose position from perception
             self.place_pose.pose.position = Point(*position)
 
@@ -177,9 +177,9 @@ class PickAndPlaceNode(Manager):
         self.baxter.place(place_pose)
 
         # For cubelets:
-        # place_pose.pose.position.z += 0.042
+        place_pose.pose.position.z += 0.042
         # For YCB:
-        place_pose.pose.position.z += 0.026
+        # place_pose.pose.position.z += 0.026
         self.place_pose = place_pose
 
     def _pick(self):
