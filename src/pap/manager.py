@@ -14,7 +14,6 @@ from interactive_markers.interactive_marker_server import (
     InteractiveMarkerServer
     )
 
-from .robot import Baxter
 from .interactive_marker import make_interactive_marker
 from .utils import Point2list, Quaternion2list
 
@@ -51,7 +50,7 @@ class Manager(object):
 
 
 class PickAndPlaceNode(Manager):
-    def __init__(self, limb_name, baxter=Baxter):
+    def __init__(self, robot):
         super(PickAndPlaceNode, self).__init__('pp_node')
 
         _post_perceive_trans = defaultdict(lambda: self._pick)
@@ -69,14 +68,16 @@ class PickAndPlaceNode(Manager):
             'preplace': {'s': self._place},
             'place': {'q': self._perceive, 'c': self._calibrate}
             }
-        self.limb_name = limb_name
 
-        self.baxter = baxter(limb_name)
-        self.baxter.level = 1
+        if callable(robot):
+            self.robot = robot()
+        else:
+            self.robot = robot
+        self.robot.level = 1
 
         # Hardcoded place for now
         self.place_pose = PoseStamped(
-            Header(0, rospy.Time(0), 'base'),
+            Header(0, rospy.Time(0), self.robot.base),
             Pose(Point(0.526025806, 0.4780144, -0.161326153),
                  Quaternion(1, 0, 0, 0)))
         self.tl = tf.TransformListener()
@@ -130,16 +131,16 @@ class PickAndPlaceNode(Manager):
 
         rospy.loginfo(
             "Placing object on top of object {}...".format(obj_to_get))
-        if self.tl.frameExists("/base") and self.tl.frameExists(frame_name):
-            t = self.tl.getLatestCommonTime("/base", frame_name)
-            position, quaternion = self.tl.lookupTransform("/base",
+        if self.tl.frameExists(self.robot.base) and self.tl.frameExists(frame_name):
+            t = self.tl.getLatestCommonTime(self.robot.base, frame_name)
+            position, quaternion = self.tl.lookupTransform(self.robot.base,
                                                            frame_name,
                                                            t)
             position = list(position)
             # Height of cubelet
-            position[2] += self.baxter.level * 0.042
+            position[2] += self.robot.level * 0.042
             # YCB
-            # position[2] += self.baxter.level * 0.026
+            # position[2] += self.robot.level * 0.026
             # Update pose position from perception
             self.place_pose.pose.position = Point(*position)
 
@@ -173,8 +174,8 @@ class PickAndPlaceNode(Manager):
                               Quaternion2list(place_pose.pose.orientation),
                               rospy.Time.now(),
                               "place_pose",
-                              "/base")
-        self.baxter.place(place_pose)
+                              self.robot.base)
+        self.robot.place(place_pose)
 
         # For cubelets:
         place_pose.pose.position.z += 0.042
@@ -193,9 +194,9 @@ class PickAndPlaceNode(Manager):
         frame_name = "object_pose_{}".format(obj_to_get)
 
         rospy.loginfo("Picking object {}...".format(obj_to_get))
-        if self.tl.frameExists("/base") and self.tl.frameExists(frame_name):
-            t = self.tl.getLatestCommonTime("/base", frame_name)
-            position, quaternion = self.tl.lookupTransform("/base",
+        if self.tl.frameExists(self.robot.base) and self.tl.frameExists(frame_name):
+            t = self.tl.getLatestCommonTime(self.robot.base, frame_name)
+            position, quaternion = self.tl.lookupTransform(self.robot.base,
                                                            frame_name,
                                                            t)
             print("position", position)
@@ -207,17 +208,17 @@ class PickAndPlaceNode(Manager):
                                   [1, 0, 0, 0],
                                   rospy.Time.now(),
                                   "pick_pose",
-                                  "/base")
+                                  self.robot.base)
             # Ignore orientation from perception
             pose = Pose(Point(*position),
                         Quaternion(1, 0, 0, 0))
             h = Header()
             h.stamp = t
-            h.frame_id = "base"
+            h.frame_id = self.robot.base
             stamped_pose = PoseStamped(h, pose)
-            self.baxter.pick(stamped_pose)
+            self.robot.pick(stamped_pose)
             self.state = 'postpick'
 
     def _level(self):
-        self.baxter.level = int(self.character)
+        self.robot.level = int(self.character)
         self.state = 'level'
