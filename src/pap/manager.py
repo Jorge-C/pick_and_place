@@ -50,7 +50,7 @@ class Manager(object):
 
 
 class PickAndPlaceNode(Manager):
-    def __init__(self, robot):
+    def __init__(self, robot, *robotargs):
         super(PickAndPlaceNode, self).__init__('pp_node')
 
         _post_perceive_trans = defaultdict(lambda: self._pick)
@@ -70,7 +70,7 @@ class PickAndPlaceNode(Manager):
             }
 
         if callable(robot):
-            self.robot = robot()
+            self.robot = robot(*robotargs)
         else:
             self.robot = robot
         self.robot.level = 1
