@@ -326,6 +326,15 @@ class Jaco(Robot):
         super(Jaco, self).__init__(base='root')
         self.robot_type = robot_type
         self.gripper = JacoGripper()
+        self.velocity_pub = rospy.Publisher(
+            '/{}_driver/in/cartesian_velocity'.format(self.robot_type),
+            kinova_msgs.msg.PoseVelocity,
+            queue_size=1)
+        action_address = ('/' + self.robot_type +
+                          '_driver/pose_action/tool_pose')
+        self.client = actionlib.SimpleActionClient(
+            action_address,
+            kinova_msgs.msg.ArmPoseAction)
 
     def move_ik(self, stamped_pose):
         """Take a PoseStamped and move the arm there.
@@ -336,24 +345,39 @@ class Jaco(Robot):
         pose = stamped_pose.pose
         position, orientation = pose.position, pose.orientation
         # Send a cartesian goal to the action server. Adapted from kinova_demo
-        action_address = ('/' + self.robot_type +
-                          '_driver/pose_action/tool_pose')
-        client = actionlib.SimpleActionClient(action_address,
-                                              kinova_msgs.msg.ArmPoseAction)
-        client.wait_for_server()
+        rospy.loginfo("Waiting for SimpleAction server")
+        self.client.wait_for_server()
 
         goal = kinova_msgs.msg.ArmPoseGoal()
         goal.pose.header = Header(frame_id=(self.robot_type + '_link_base'))
         goal.pose.pose.position = position
         goal.pose.pose.orientation = orientation
 
-        client.send_goal(goal)
+        rospy.loginfo("Sending goal")
+        self.client.send_goal(goal)
 
-        if client.wait_for_result(rospy.Duration(10.0)):
-            return client.get_result()
+        t = 3.0
+        rospy.loginfo("Waiting for up to {} s for result".format(t))
+        if self.client.wait_for_result(rospy.Duration(t)):
+            rospy.loginfo("Action succeeded")
+            return self.client.get_result()
         else:
-            client.cancel_all_goals()
+            self.client.cancel_all_goals()
             rospy.loginfo('        the cartesian action timed-out')
+
+    def kinematic_control(self):
+        r = rospy.Rate(100)
+        return
+        while not self.done:
+            msg = kinova_msgs.msg.PoseVelocity(
+                twist_linear_x=0.0,
+                twist_linear_y=0.0,
+                twist_linear_z=0.0,
+                twist_angular_x=0.0,
+                twist_angular_y=0.0,
+                twist_angular_z=10.0)
+            self.velocity_pub.publish(msg)
+            r.sleep()
 
 
 def main(limb_name, reset):
