@@ -285,6 +285,7 @@ class Baxter(Robot):
 class JacoGripper(object):
     def __init__(self, robot_type='j2n6a300'):
         self.robot_type = robot_type
+        self.home()
         action_address = ('/{}_driver/fingers_action/'
                           'finger_positions'.format(robot_type))
         self.client = actionlib.SimpleActionClient(
@@ -294,6 +295,16 @@ class JacoGripper(object):
 
         self.finger_maxDist = 18.9/2/1000  # max distance for one finger
         self.finger_maxTurn = 6800  # max thread rotation for one finger
+
+    def home(self):
+        addr = '/{}_driver/in/home_arm'.format(self.robot_type)
+        rospy.wait_for_service(addr)
+        try:
+            serv = rospy.ServiceProxy(addr, lambda: None)
+            rep = serv()
+            rospy.loginfo(rep)
+        except rospy.ServiceException as e:
+            rospy.loginfo("Service error {}".format(e))
 
     def set_position(self, position):
         """Accept position from 0 (open) to 100 (closed)."""
