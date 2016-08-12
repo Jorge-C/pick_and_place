@@ -8,6 +8,7 @@ import rospy
 import actionlib
 
 from std_msgs.msg import Header
+from std_srvs.srv import Empty
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
 
 import baxter_interface
@@ -285,7 +286,6 @@ class Baxter(Robot):
 class JacoGripper(object):
     def __init__(self, robot_type='j2n6a300'):
         self.robot_type = robot_type
-        self.home()
         action_address = ('/{}_driver/fingers_action/'
                           'finger_positions'.format(robot_type))
         self.client = actionlib.SimpleActionClient(
@@ -295,16 +295,6 @@ class JacoGripper(object):
 
         self.finger_maxDist = 18.9/2/1000  # max distance for one finger
         self.finger_maxTurn = 6800  # max thread rotation for one finger
-
-    def home(self):
-        addr = '/{}_driver/in/home_arm'.format(self.robot_type)
-        rospy.wait_for_service(addr)
-        try:
-            serv = rospy.ServiceProxy(addr, lambda: None)
-            rep = serv()
-            rospy.loginfo(rep)
-        except rospy.ServiceException as e:
-            rospy.loginfo("Service error {}".format(e))
 
     def set_position(self, position):
         """Accept position from 0 (open) to 100 (closed)."""
@@ -336,6 +326,7 @@ class Jaco(Robot):
     def __init__(self, robot_type='j2n6a300', *args, **kwargs):
         super(Jaco, self).__init__(base='root')
         self.robot_type = robot_type
+        self.home()
         self.gripper = JacoGripper()
         self.velocity_pub = rospy.Publisher(
             '/{}_driver/in/cartesian_velocity'.format(self.robot_type),
@@ -346,6 +337,16 @@ class Jaco(Robot):
         self.client = actionlib.SimpleActionClient(
             action_address,
             kinova_msgs.msg.ArmPoseAction)
+
+    def home(self):
+        addr = '/{}_driver/in/home_arm'.format(self.robot_type)
+        rospy.wait_for_service(addr)
+        try:
+            serv = rospy.ServiceProxy(addr, Empty)
+            rep = serv()
+            rospy.loginfo(rep)
+        except rospy.ServiceException as e:
+            rospy.loginfo("Service error {}".format(e))
 
     def move_ik(self, stamped_pose):
         """Take a PoseStamped and move the arm there.
