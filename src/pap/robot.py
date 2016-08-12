@@ -8,7 +8,6 @@ import rospy
 import actionlib
 
 from std_msgs.msg import Header
-from std_srvs.srv import Empty
 from geometry_msgs.msg import Point, Quaternion, Pose, PoseStamped
 
 import baxter_interface
@@ -18,6 +17,7 @@ from baxter_core_msgs.srv import SolvePositionIK, SolvePositionIKRequest
 from baxter_core_msgs.msg import DigitalIOState
 
 import kinova_msgs.msg
+from kinova_msgs.srv import HomeArm
 
 # Apparently tf was deprecated a long time ago? And we should use tf2?
 import tf
@@ -342,7 +342,7 @@ class Jaco(Robot):
         addr = '/{}_driver/in/home_arm'.format(self.robot_type)
         rospy.wait_for_service(addr)
         try:
-            serv = rospy.ServiceProxy(addr, Empty)
+            serv = rospy.ServiceProxy(addr, HomeArm)
             rep = serv()
             rospy.loginfo(rep)
         except rospy.ServiceException as e:
