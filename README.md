@@ -1,10 +1,14 @@
 # pick_and_place
 
+.bashrc configured for baxter
+
+roscore
+
 baxter enable:
 
 rosrun baxter_tools enable_robot.py -e
 
-roslaunch openi2_launch openi2_launch
+roslaunch openni_launch openni.launch
 
 rosrun image_view image_view image:=/camera/rgb/image_raw
 
