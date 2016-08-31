@@ -1,7 +1,9 @@
 # pick_and_place
 
 .bashrc configured for baxter
-
+```
+sudo apt-get install ros-indigo-ar-track-alvar (rebecca add this to install guide)
+```
 roscore (for jaco)
 
 baxter enable:
